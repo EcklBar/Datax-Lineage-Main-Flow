@@ -1,165 +1,601 @@
-<!DOCTYPE html>
-<html lang="he" dir="rtl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>מנהל תיק השקעות - Live</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Assistant:wght@300;400;700;800&display=swap');
-        body { font-family: 'Assistant', sans-serif; background-color: #020617; color: #f8fafc; }
-        .card-grad { background: linear-gradient(145deg, rgba(30, 41, 59, 0.4) 0%, rgba(15, 23, 42, 0.6) 100%); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.05); }
-        .profit { color: #10b981; text-shadow: 0 0 10px rgba(16, 185, 129, 0.2); }
-        .loss { color: #f43f5e; text-shadow: 0 0 10px rgba(244, 63, 94, 0.2); }
-        .pulse { animation: pulse 2s infinite; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
-    </style>
+<html lang="en"><head>
+<meta charset="UTF-8">
+<title>DataX Pipeline Lineage</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f8fafc; color: #0f172a; }
+
+header {
+  padding: 18px 28px 14px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #fff;
+  display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+}
+header h1 { font-size: 17px; font-weight: 600; }
+header p  { font-size: 12px; color: #64748b; margin-top: 3px; }
+
+.controls {
+  display: flex; gap: 6px; align-items: center; flex-wrap: wrap;
+}
+.btn {
+  padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500;
+  cursor: pointer; border: 1px solid #e2e8f0; background: #fff; color: #475569;
+  transition: all .15s;
+}
+.btn:hover { background: #f1f5f9; }
+.btn.active { background: #0f172a; color: #fff; border-color: #0f172a; }
+.btn.export { background: #6366f1; color: #fff; border-color: #6366f1; }
+.btn.export:hover { background: #4f46e5; }
+
+.legend {
+  display: flex; gap: 14px; flex-wrap: wrap;
+  padding: 8px 28px; border-bottom: 1px solid #e2e8f0;
+  background: #fff; font-size: 11px; color: #64748b;
+}
+.legend-item { display: flex; align-items: center; gap: 5px; }
+.legend-swatch { width: 10px; height: 10px; border-radius: 2px; }
+
+.scroll-wrap { overflow-x: auto; padding: 24px 28px 40px; }
+
+.diagram-outer { position: relative; display: inline-block; min-width: 1920px; }
+#svg-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+#node-layer { position: relative; }
+
+/* column headers */
+.col-headers { display: flex; gap: 0; margin-bottom: 16px; }
+.col-header {
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+  text-align: center;
+}
+
+/* nodes */
+.node {
+  position: absolute;
+  width: 200px;
+  background: #fff;
+  border: 1.5px solid #e2e8f0;
+  border-left-width: 4px;
+  border-radius: 8px;
+  padding: 7px 10px;
+  cursor: default;
+  transition: box-shadow .15s, opacity .15s;
+  user-select: none;
+}
+.node:hover { box-shadow: 0 4px 14px rgba(0,0,0,.1); z-index: 10; }
+.node .n-label { font-size: 11px; font-weight: 600; color: #0f172a; line-height: 1.35; word-break: break-all; }
+.node .n-sub   { font-size: 10px; color: #94a3b8; margin-top: 2px; line-height: 1.3; }
+
+.node.dimmed { opacity: .2; }
+.node.highlighted { box-shadow: 0 0 0 2px currentColor, 0 4px 14px rgba(0,0,0,.15); z-index: 10; }
+
+/* type colors — border-left */
+.t-source     { border-left-color: #ea580c; }
+.t-enrichment { border-left-color: #d97706; }
+.t-faue       { border-left-color: #7c3aed; }
+.t-hive_rt    { border-left-color: #4f46e5; background: #f5f3ff; }
+.t-unified    { border-left-color: #0284c7; }
+.t-agg        { border-left-color: #0d9488; }
+.t-bq         { border-left-color: #16a34a; }
+.t-vertica    { border-left-color: #db2777; }
+.t-es         { border-left-color: #ea580c; }
+
+/* tooltip */
+.tip {
+  position: fixed; background: #1e293b; color: #e2e8f0;
+  border-radius: 8px; padding: 9px 13px; font-size: 11px;
+  max-width: 280px; pointer-events: none; z-index: 200;
+  display: none; box-shadow: 0 8px 24px rgba(0,0,0,.3);
+  line-height: 1.5;
+}
+.tip.show { display: block; }
+.tip strong { color: #fff; display: block; margin-bottom: 4px; font-size: 12px; }
+</style>
 </head>
-<body class="p-4 md:p-8">
-    <div class="max-w-6xl mx-auto">
-        
-        <div class="mb-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div class="card-grad p-6 rounded-3xl shadow-2xl">
-                <p class="text-slate-500 text-xs font-bold uppercase mb-1 tracking-widest">שווי תיק כולל</p>
-                <div id="total-value" class="text-4xl font-black text-white font-mono tracking-tighter leading-none">₪ 0</div>
-            </div>
-            
-            <div class="card-grad p-6 rounded-3xl shadow-2xl">
-                <p class="text-slate-500 text-xs font-bold uppercase mb-1 tracking-widest">רווח/הפסד מצטבר</p>
-                <div id="total-pnl" class="text-3xl font-black font-mono tracking-tighter">₪ 0</div>
-                <div id="total-pnl-percent" class="text-sm font-bold mt-1 opacity-80">0.00%</div>
-            </div>
+<body>
 
-            <div class="flex items-center justify-between card-grad p-6 rounded-3xl shadow-2xl">
-                <div>
-                    <div class="flex items-center gap-2">
-                        <div id="led" class="w-3 h-3 bg-amber-500 rounded-full pulse"></div>
-                        <span id="status" class="text-xs font-mono font-bold text-amber-400 uppercase tracking-widest">Connecting</span>
-                    </div>
-                    <p id="update-time" class="text-[10px] text-slate-500 mt-2 font-mono italic"></p>
-                </div>
-                <button onclick="fetchData()" class="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2.5 rounded-xl text-xs font-black shadow-lg active:scale-95 transition-all">רענון</button>
-            </div>
-        </div>
+<header>
+  <div>
+    <h1>DataX Pipeline — Full Lineage</h1>
+    <p>Batch Hourly &amp; Real-Time · 7 layers · hover nodes to trace lineage</p>
+  </div>
+  <div class="controls">
+    <button class="btn" onclick="setFilter('all',this)">All</button>
+    <button class="btn active" onclick="setFilter('rt',this)">RT Path</button>
+    <button class="btn" onclick="setFilter('batch',this)">Batch Path</button>
+    <button class="btn export" onclick="exportExcalidraw()">Export .excalidraw</button>
+  </div>
+</header>
 
-        <div id="dashboard" class="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div class="col-span-full text-center py-20 text-slate-600 animate-pulse italic">טוען נתונים מהגיליון...</div>
-        </div>
-    </div>
+<div class="legend">
+  <div class="legend-item"><div class="legend-swatch" style="background:#ea580c"></div>Raw Kafka source</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#d97706"></div>Enrichment / Staging</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#7c3aed"></div>faue_* unified events</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#4f46e5"></div>Hive _rt (RT→Batch handoff)</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#0284c7"></div>Unified traffic</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#0d9488"></div>Aggregated topics</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#16a34a"></div>BigQuery</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#db2777"></div>Vertica</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#ea580c;opacity:.5"></div>Elasticsearch</div>
+</div>
 
-    <script>
-        // וודא שזה הלינק מהגיליון החדש שפורסם כ-CSV
-        const SHEET_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRLE8jDhlsiNvpe6jZLmpVssN32mzA2D7UIGwjjnsTbjdpHPBUFVwloOWNRbAZSpM0b_p-AiNvJNoer/pub?gid=0&single=true&output=csv';
+<div class="scroll-wrap">
+  <div class="diagram-outer" id="diagram-outer" style="height: 802px; min-width: 1920px;">
+    <div id="node-layer" style="height: 802px;"><div style="position: absolute; top: 0px; left: 0px; width: 100%; height: 36px;"><div style="position: absolute; left: 20px; top: 6px; width: 200px; text-align: center; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: rgb(234, 88, 12);">Raw Kafka Sources</div><div style="position: absolute; left: 300px; top: 6px; width: 200px; text-align: center; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: rgb(217, 119, 6);">Enrichment / Staging</div><div style="position: absolute; left: 580px; top: 6px; width: 200px; text-align: center; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: rgb(124, 58, 237);">Unified Events (faue_*)</div><div style="position: absolute; left: 860px; top: 6px; width: 200px; text-align: center; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: rgb(79, 70, 229);">Hive RT Tables</div><div style="position: absolute; left: 1140px; top: 6px; width: 200px; text-align: center; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: rgb(2, 132, 199);">Unified Traffic</div><div style="position: absolute; left: 1420px; top: 6px; width: 200px; text-align: center; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: rgb(13, 148, 136);">Aggregated Topics</div><div style="position: absolute; left: 1700px; top: 6px; width: 200px; text-align: center; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: rgb(22, 163, 74);">Final Sinks</div></div><div class="node t-source" id="nd-s_dwrl" data-path="both" style="left: 20px; top: 135px;"><div class="n-label">dwrl_request_listings</div><div class="n-sub">Kafka topic</div></div><div class="node t-source" id="nd-s_dwds" data-path="both" style="left: 20px; top: 201px;"><div class="n-label">dwds_dsrequest.datum</div><div class="n-sub">Kafka topic</div></div><div class="node t-source" id="nd-s_dwcl" data-path="both" style="left: 20px; top: 267px;"><div class="n-label">dwcl_click.datum</div><div class="n-sub">Kafka topic</div></div><div class="node t-source" id="nd-s_pcpc" data-path="both" style="left: 20px; top: 333px;"><div class="n-label">pcpc_paid_clicks</div><div class="n-sub">Kafka topic</div></div><div class="node t-source" id="nd-s_pcpi" data-path="both" style="left: 20px; top: 399px;"><div class="n-label">pcpi_paid_impression.datum</div><div class="n-sub">Kafka topic</div></div><div class="node t-source" id="nd-s_dwlv" data-path="both" style="left: 20px; top: 465px;"><div class="n-label">dwlv_listings_viewability.datum</div><div class="n-sub">Kafka topic</div></div><div class="node t-source" id="nd-s_vdev" data-path="both" style="left: 20px; top: 531px;"><div class="n-label">vdev_video_event.datum</div><div class="n-sub">Kafka topic</div></div><div class="node t-source" id="nd-s_dwps" data-path="both" style="left: 20px; top: 597px;"><div class="n-label">dwps_psr.datum</div><div class="n-sub">Kafka topic</div></div><div class="node t-enrichment" id="nd-e_cass" data-path="both" style="left: 300px; top: 300px;"><div class="n-label">Cassandra</div><div class="n-sub">unified_traffic_nydc
+request_and_listings
+join: req_id + absolute_pos</div></div><div class="node t-enrichment" id="nd-e_stg_os" data-path="both" style="left: 300px; top: 366px;"><div class="n-label">favd_video_metrics
+_outstream_stg</div><div class="n-sub">Kafka staging topic</div></div><div class="node t-enrichment" id="nd-e_stg_ctw" data-path="both" style="left: 300px; top: 432px;"><div class="n-label">favd_video_metrics
+_ctw_stg</div><div class="n-sub">Kafka staging topic</div></div><div class="node t-faue" id="nd-f_listings" data-path="both" style="left: 580px; top: 36px;"><div class="n-label">faue_listings</div><div class="n-sub">Kafka · GenericJoinerJob</div></div><div class="node t-faue" id="nd-f_clicks" data-path="both" style="left: 580px; top: 102px;"><div class="n-label">faue_clicks</div><div class="n-sub">Kafka · GenericJoinerJob</div></div><div class="node t-faue" id="nd-f_pc" data-path="both" style="left: 580px; top: 168px;"><div class="n-label">faue_paid_clicks</div><div class="n-sub">Kafka · GenericJoinerJob</div></div><div class="node t-faue" id="nd-f_pi" data-path="both" style="left: 580px; top: 234px;"><div class="n-label">faue_paid_impressions</div><div class="n-sub">Kafka · GenericJoinerJob</div></div><div class="node t-faue" id="nd-f_lv" data-path="both" style="left: 580px; top: 300px;"><div class="n-label">faue_listings_viewability</div><div class="n-sub">Kafka · GenericJoinerJob</div></div><div class="node t-faue" id="nd-f_vo" data-path="both" style="left: 580px; top: 366px;"><div class="n-label">faue_video_events_outstream</div><div class="n-sub">Kafka · GenericJoinerJob</div></div><div class="node t-faue" id="nd-f_vc" data-path="both" style="left: 580px; top: 432px;"><div class="n-label">faue_video_events_ctw</div><div class="n-sub">Kafka · GenericJoinerJob</div></div><div class="node t-faue" id="nd-f_req" data-path="both" style="left: 580px; top: 498px;"><div class="n-label">faue_requests</div><div class="n-sub">Kafka · GenericJoinerJob</div></div><div class="node t-faue" id="nd-f_pvs" data-path="both" style="left: 580px; top: 564px;"><div class="n-label">faue_pvs</div><div class="n-sub">Kafka · GenericAggJob</div></div><div class="node t-faue" id="nd-f_wi" data-path="both" style="left: 580px; top: 630px;"><div class="n-label">faue_widget_impressions</div><div class="n-sub">Kafka · GenericAggJob</div></div><div class="node t-faue" id="nd-f_psr" data-path="both" style="left: 580px; top: 696px;"><div class="n-label">faue_potentially_served_request</div><div class="n-sub">Kafka · GenericAggJob</div></div><div class="node t-hive_rt" id="nd-h_rt" data-path="both" style="left: 860px; top: 366px;"><div class="n-label">faue_*_rt
+(10 Hive tables)</div><div class="n-sub">KafkaToHiveJob
+continuous · last 1h events
+RT→Batch handoff 1</div></div><div class="node t-unified" id="nd-u_faam" data-path="rt" style="left: 1140px; top: 333px;"><div class="n-label">faam_amplify_all_traffic</div><div class="n-sub">Kafka · GenericAggJob
+5-min window</div></div><div class="node t-unified" id="nd-u_faem" data-path="rt" style="left: 1140px; top: 399px;"><div class="n-label">faem_engage_all_traffic</div><div class="n-sub">Kafka · GenericAggJob
+streaming agg</div></div><div class="node t-agg" id="nd-a_facm" data-path="rt" style="left: 1420px; top: 69px;"><div class="n-label">facm_campaign_traffic</div><div class="n-sub">Kafka · 1-min</div></div><div class="node t-agg" id="nd-a_faad" data-path="rt" style="left: 1420px; top: 135px;"><div class="n-label">faad_ad_traffic</div><div class="n-sub">Kafka · 1-min</div></div><div class="node t-agg" id="nd-a_facs" data-path="rt" style="left: 1420px; top: 201px;"><div class="n-label">facs_campaign_section_traffic</div><div class="n-sub">Kafka · 1-min</div></div><div class="node t-agg" id="nd-a_facg" data-path="rt" style="left: 1420px; top: 267px;"><div class="n-label">facg_campaign_geo_traffic</div><div class="n-sub">Kafka · 1-min</div></div><div class="node t-agg" id="nd-a_faex" data-path="rt" style="left: 1420px; top: 333px;"><div class="n-label">faex_external_id_traffic</div><div class="n-sub">Kafka · 1-min</div></div><div class="node t-agg" id="nd-a_faoc" data-path="rt" style="left: 1420px; top: 399px;"><div class="n-label">faoc_organic_campaign_traffic</div><div class="n-sub">Kafka · 1-min</div></div><div class="node t-agg" id="nd-a_fast" data-path="rt" style="left: 1420px; top: 465px;"><div class="n-label">fast_section_traffic</div><div class="n-sub">Kafka · streaming</div></div><div class="node t-agg" id="nd-a_fadt" data-path="rt" style="left: 1420px; top: 531px;"><div class="n-label">fadt_src_doc_traffic</div><div class="n-sub">Kafka · streaming</div></div><div class="node t-agg" id="nd-a_faar" data-path="rt" style="left: 1420px; top: 597px;"><div class="n-label">faar_amplify_realtime</div><div class="n-sub">Kafka · 1-min window</div></div><div class="node t-agg" id="nd-a_faap" data-path="rt" style="left: 1420px; top: 663px;"><div class="n-label">faap_amplify_pvs</div><div class="n-sub">Kafka → Elasticsearch</div></div><div class="node t-bq" id="nd-o_bqrt" data-path="rt" style="left: 1700px; top: 201px;"><div class="n-label">BQ realtime.*</div><div class="n-sub">bq-analytics-storage
+7 tables · ~1-2 min latency</div></div><div class="node t-bq" id="nd-o_bqprod" data-path="both" style="left: 1700px; top: 267px;"><div class="n-label">BQ prod.*</div><div class="n-sub">hourly batch + RT merge
+Airflow MERGE every 5 min</div></div><div class="node t-bq" id="nd-o_dirp" data-path="rt" style="left: 1700px; top: 333px;"><div class="n-label">dirp_real_time_max_partition</div><div class="n-sub">BQ · dbt · every 5 min</div></div><div class="node t-vertica" id="nd-o_vrt" data-path="rt" style="left: 1700px; top: 399px;"><div class="n-label">Vertica outbrain_realtime</div><div class="n-sub">faar direct · 1-min</div></div><div class="node t-vertica" id="nd-o_vbatch" data-path="batch" style="left: 1700px; top: 465px; display: none;"><div class="n-label">Vertica (daily)</div><div class="n-sub">Hive → Vertica → BQ</div></div><div class="node t-es" id="nd-o_es" data-path="rt" style="left: 1700px; top: 531px;"><div class="n-label">Elasticsearch pv_re</div><div class="n-sub">DataxFaapToEs</div></div></div>
+    <svg id="svg-layer" viewBox="0 0 1920 802" height="802"><defs><marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#cbd5e1"></path></marker><marker id="arr-rt" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#10b981"></path></marker><marker id="arr-batch" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#3b82f6"></path></marker></defs><path d="M220,163 C256,163 264,328 300,328" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="s_dwrl" data-to="e_cass" data-path="both"></path><path d="M220,229 C256,229 264,328 300,328" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="s_dwds" data-to="e_cass" data-path="both"></path><path d="M220,559 C256,559 264,394 300,394" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="s_vdev" data-to="e_stg_os" data-path="both"></path><path d="M220,559 C256,559 264,460 300,460" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="s_vdev" data-to="e_stg_ctw" data-path="both"></path><path d="M220,229 C382,229 418,64 580,64" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="s_dwds" data-to="f_listings" data-path="both"></path><path d="M500,328 C536,328 544,64 580,64" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="e_cass" data-to="f_listings" data-path="both"></path><path d="M220,295 C382,295 418,130 580,130" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="s_dwcl" data-to="f_clicks" data-path="both"></path><path d="M500,328 C536,328 544,130 580,130" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="e_cass" data-to="f_clicks" data-path="both"></path><path d="M220,361 C382,361 418,196 580,196" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="s_pcpc" data-to="f_pc" data-path="both"></path><path d="M500,328 C536,328 544,196 580,196" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="e_cass" data-to="f_pc" data-path="both"></path><path d="M220,427 C382,427 418,262 580,262" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="s_pcpi" data-to="f_pi" data-path="both"></path><path d="M500,328 C536,328 544,262 580,262" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="e_cass" data-to="f_pi" data-path="both"></path><path d="M220,493 C382,493 418,328 580,328" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="s_dwlv" data-to="f_lv" data-path="both"></path><path d="M500,328 C536,328 544,328 580,328" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="e_cass" data-to="f_lv" data-path="both"></path><path d="M500,394 C536,394 544,394 580,394" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="e_stg_os" data-to="f_vo" data-path="both"></path><path d="M500,328 C536,328 544,394 580,394" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="e_cass" data-to="f_vo" data-path="both"></path><path d="M500,460 C536,460 544,460 580,460" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="e_stg_ctw" data-to="f_vc" data-path="both"></path><path d="M500,328 C536,328 544,460 580,460" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="e_cass" data-to="f_vc" data-path="both"></path><path d="M220,229 C382,229 418,526 580,526" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="s_dwds" data-to="f_req" data-path="both"></path><path d="M500,328 C536,328 544,526 580,526" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="e_cass" data-to="f_req" data-path="both"></path><path d="M780,526 C690,526 670,592 580,592" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_req" data-to="f_pvs" data-path="both"></path><path d="M780,526 C690,526 670,658 580,658" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_req" data-to="f_wi" data-path="both"></path><path d="M220,625 C382,625 418,724 580,724" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="s_dwps" data-to="f_psr" data-path="both"></path><path d="M500,328 C536,328 544,724 580,724" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="e_cass" data-to="f_psr" data-path="both"></path><path d="M780,64 C816,64 824,394 860,394" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_listings" data-to="h_rt" data-path="both"></path><path d="M780,130 C816,130 824,394 860,394" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_clicks" data-to="h_rt" data-path="both"></path><path d="M780,196 C816,196 824,394 860,394" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_pc" data-to="h_rt" data-path="both"></path><path d="M780,262 C816,262 824,394 860,394" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_pi" data-to="h_rt" data-path="both"></path><path d="M780,328 C816,328 824,394 860,394" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_lv" data-to="h_rt" data-path="both"></path><path d="M780,394 C816,394 824,394 860,394" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_vo" data-to="h_rt" data-path="both"></path><path d="M780,460 C816,460 824,394 860,394" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_vc" data-to="h_rt" data-path="both"></path><path d="M780,526 C816,526 824,394 860,394" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_req" data-to="h_rt" data-path="both"></path><path d="M780,592 C816,592 824,394 860,394" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_pvs" data-to="h_rt" data-path="both"></path><path d="M780,658 C816,658 824,394 860,394" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_wi" data-to="h_rt" data-path="both"></path><path d="M780,196 C942,196 978,361 1140,361" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_pc" data-to="u_faam" data-path="rt" style=""></path><path d="M780,130 C942,130 978,361 1140,361" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_clicks" data-to="u_faam" data-path="rt" style=""></path><path d="M780,64 C942,64 978,361 1140,361" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_listings" data-to="u_faam" data-path="rt" style=""></path><path d="M780,262 C942,262 978,361 1140,361" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_pi" data-to="u_faam" data-path="rt" style=""></path><path d="M780,328 C942,328 978,361 1140,361" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_lv" data-to="u_faam" data-path="rt" style=""></path><path d="M780,394 C942,394 978,361 1140,361" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_vo" data-to="u_faam" data-path="rt" style=""></path><path d="M780,460 C942,460 978,361 1140,361" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_vc" data-to="u_faam" data-path="rt" style=""></path><path d="M780,196 C942,196 978,427 1140,427" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_pc" data-to="u_faem" data-path="rt" style=""></path><path d="M780,130 C942,130 978,427 1140,427" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_clicks" data-to="u_faem" data-path="rt" style=""></path><path d="M780,64 C942,64 978,427 1140,427" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_listings" data-to="u_faem" data-path="rt" style=""></path><path d="M780,262 C942,262 978,427 1140,427" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_pi" data-to="u_faem" data-path="rt" style=""></path><path d="M780,328 C942,328 978,427 1140,427" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_lv" data-to="u_faem" data-path="rt" style=""></path><path d="M780,526 C942,526 978,427 1140,427" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_req" data-to="u_faem" data-path="rt" style=""></path><path d="M780,592 C942,592 978,427 1140,427" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_pvs" data-to="u_faem" data-path="rt" style=""></path><path d="M780,658 C942,658 978,427 1140,427" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_wi" data-to="u_faem" data-path="rt" style=""></path><path d="M780,394 C942,394 978,427 1140,427" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_vo" data-to="u_faem" data-path="rt" style=""></path><path d="M780,460 C942,460 978,427 1140,427" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_vc" data-to="u_faem" data-path="rt" style=""></path><path d="M1060,394 C1348,394 1412,295 1700,295" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="h_rt" data-to="o_bqprod" data-path="batch" style="display: none;"></path><path d="M1060,394 C1348,394 1412,493 1700,493" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="h_rt" data-to="o_vbatch" data-path="batch" style="display: none;"></path><path d="M1340,361 C1376,361 1384,97 1420,97" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="u_faam" data-to="a_facm" data-path="rt" style=""></path><path d="M1340,361 C1376,361 1384,163 1420,163" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="u_faam" data-to="a_faad" data-path="rt" style=""></path><path d="M1340,361 C1376,361 1384,229 1420,229" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="u_faam" data-to="a_facs" data-path="rt" style=""></path><path d="M1340,361 C1376,361 1384,295 1420,295" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="u_faam" data-to="a_facg" data-path="rt" style=""></path><path d="M1340,361 C1376,361 1384,625 1420,625" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="u_faam" data-to="a_faar" data-path="rt" style=""></path><path d="M780,130 C1068,130 1132,361 1420,361" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_clicks" data-to="a_faex" data-path="rt" style=""></path><path d="M780,64 C1068,64 1132,361 1420,361" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_listings" data-to="a_faex" data-path="rt" style=""></path><path d="M780,196 C1068,196 1132,361 1420,361" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_pc" data-to="a_faex" data-path="rt" style=""></path><path d="M780,262 C1068,262 1132,361 1420,361" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_pi" data-to="a_faex" data-path="rt" style=""></path><path d="M780,526 C1068,526 1132,361 1420,361" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_req" data-to="a_faex" data-path="rt" style=""></path><path d="M780,658 C1068,658 1132,361 1420,361" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_wi" data-to="a_faex" data-path="rt" style=""></path><path d="M780,592 C1068,592 1132,361 1420,361" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_pvs" data-to="a_faex" data-path="rt" style=""></path><path d="M780,394 C1068,394 1132,361 1420,361" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_vo" data-to="a_faex" data-path="rt" style=""></path><path d="M780,460 C1068,460 1132,361 1420,361" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_vc" data-to="a_faex" data-path="rt" style=""></path><path d="M780,64 C1068,64 1132,427 1420,427" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_listings" data-to="a_faoc" data-path="rt" style=""></path><path d="M780,130 C1068,130 1132,427 1420,427" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_clicks" data-to="a_faoc" data-path="rt" style=""></path><path d="M1340,427 C1376,427 1384,493 1420,493" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="u_faem" data-to="a_fast" data-path="rt" style=""></path><path d="M1340,427 C1376,427 1384,559 1420,559" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="u_faem" data-to="a_fadt" data-path="rt" style=""></path><path d="M780,64 C1068,64 1132,691 1420,691" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="f_listings" data-to="a_faap" data-path="rt" style=""></path><path d="M1620,97 C1656,97 1664,229 1700,229" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="a_facm" data-to="o_bqrt" data-path="rt" style=""></path><path d="M1620,163 C1656,163 1664,229 1700,229" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="a_faad" data-to="o_bqrt" data-path="rt" style=""></path><path d="M1620,229 C1656,229 1664,229 1700,229" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="a_facs" data-to="o_bqrt" data-path="rt" style=""></path><path d="M1620,295 C1656,295 1664,229 1700,229" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="a_facg" data-to="o_bqrt" data-path="rt" style=""></path><path d="M1620,361 C1656,361 1664,229 1700,229" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="a_faex" data-to="o_bqrt" data-path="rt" style=""></path><path d="M1620,427 C1656,427 1664,229 1700,229" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="a_faoc" data-to="o_bqrt" data-path="rt" style=""></path><path d="M1900,229 C1810,229 1790,295 1700,295" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="o_bqrt" data-to="o_bqprod" data-path="rt" style=""></path><path d="M1900,229 C1810,229 1790,361 1700,361" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="o_bqrt" data-to="o_dirp" data-path="rt" style=""></path><path d="M1620,625 C1656,625 1664,427 1700,427" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="a_faar" data-to="o_vrt" data-path="rt" style=""></path><path d="M1620,691 C1656,691 1664,559 1700,559" fill="none" stroke="#cbd5e1" stroke-width="1.2" marker-end="url(#arr)" opacity="0.7" data-from="a_faap" data-to="o_es" data-path="rt" style=""></path></svg>
+  </div>
+</div>
 
-        function cleanNum(val) {
-            if (!val || val === "") return 0;
-            // מסיר פסיקים, רווחים וסימני שקל כדי להפוך למספר תקין
-            const cleaned = val.toString().replace(/,/g, '').replace(/[₪%]/g, '').trim();
-            return parseFloat(cleaned) || 0;
-        }
+<div class="tip" id="tip" style="left: 1515px; top: 367px;"><strong id="tip-title">facs_campaign_section_traffic</strong><span id="tip-body">Campaign×section traffic. Source: faam_amplify_all_traffic. → BQ realtime.facs_campaign_section_traffic.</span></div>
 
-        function fetchData() {
-            document.getElementById('status').innerText = 'SYNCING';
-            Papa.parse(SHEET_URL, {
-                download: true,
-                header: true,
-                skipEmptyLines: true,
-                complete: function(results) {
-                    if (results.data && results.data.length > 0) {
-                        renderDashboard(results.data);
-                        document.getElementById('status').innerText = 'LIVE';
-                        document.getElementById('update-time').innerText = 'Updated: ' + new Date().toLocaleTimeString('he-IL');
-                        document.getElementById('led').className = 'w-3 h-3 bg-emerald-500 rounded-full';
-                    }
-                }
-            });
-        }
+<script>
+// ── DATA ──────────────────────────────────────────────────────────────────────
 
-        function renderDashboard(data) {
-            const container = document.getElementById('dashboard');
-            container.innerHTML = '';
-            
-            let totalValueSum = 0;
-            let totalInvestmentSum = 0;
+const COLS_META = [
+  { label: 'Raw Kafka Sources',        color: '#ea580c', x: 20   },
+  { label: 'Enrichment / Staging',     color: '#d97706', x: 300  },
+  { label: 'Unified Events (faue_*)',  color: '#7c3aed', x: 580  },
+  { label: 'Hive RT Tables',           color: '#4f46e5', x: 860  },
+  { label: 'Unified Traffic',          color: '#0284c7', x: 1140 },
+  { label: 'Aggregated Topics',        color: '#0d9488', x: 1420 },
+  { label: 'Final Sinks',              color: '#16a34a', x: 1700 },
+];
 
-            data.forEach(row => {
-                // זיהוי עמודות לפי מילות מפתח (חסין לשינויי שמות קלים)
-                const find = (word) => {
-                    const key = Object.keys(row).find(k => k.includes(word));
-                    return row[key];
-                };
+// col = column index, type = css class suffix, path = 'rt'|'batch'|'both'
+const NODES = [
+  // col 0 — sources
+  { id:'s_dwrl', col:0, label:'dwrl_request_listings',           sub:'Kafka topic',      type:'source',     path:'both',  tip:'Reads by DataXDwrlToCassandraJob → Cassandra. Also produces dwlt_listing.datum + dwrq_request.datum as DataInfra side-products.' },
+  { id:'s_dwds', col:0, label:'dwds_dsrequest.datum',            sub:'Kafka topic',      type:'source',     path:'both',  tip:'Primary stream input for faue_listings and faue_requests joins. Also feeds DataXDwdsToCassandraJob as a second Cassandra writer.' },
+  { id:'s_dwcl', col:0, label:'dwcl_click.datum',                sub:'Kafka topic',      type:'source',     path:'both',  tip:'Click events. Source for faue_clicks join.' },
+  { id:'s_pcpc', col:0, label:'pcpc_paid_clicks',                sub:'Kafka topic',      type:'source',     path:'both',  tip:'Paid click events. Source for faue_paid_clicks join.' },
+  { id:'s_pcpi', col:0, label:'pcpi_paid_impression.datum',      sub:'Kafka topic',      type:'source',     path:'both',  tip:'Paid impression events. Source for faue_paid_impressions join.' },
+  { id:'s_dwlv', col:0, label:'dwlv_listings_viewability.datum', sub:'Kafka topic',      type:'source',     path:'both',  tip:'Listing viewability events. Source for faue_listings_viewability join.' },
+  { id:'s_vdev', col:0, label:'vdev_video_event.datum',          sub:'Kafka topic',      type:'source',     path:'both',  tip:'Video events. First aggregated into two staging topics before the Cassandra join.' },
+  { id:'s_dwps', col:0, label:'dwps_psr.datum',                  sub:'Kafka topic',      type:'source',     path:'both',  tip:'Potentially served request events. Source for faue_potentially_served_request.' },
 
-                const name = find('שם') || Object.values(row)[0];
-                if (!name || name.length < 2) return;
+  // col 1 — enrichment
+  { id:'e_cass',    col:1, label:'Cassandra',                          sub:'unified_traffic_nydc\nrequest_and_listings\njoin: req_id + absolute_pos', type:'enrichment', path:'both', tip:'Enrichment store. Written by DataXDwrlToCassandraJob and DataXDwdsToCassandraJob. 2-hour window. Join key: req_id + absolute_pos.' },
+  { id:'e_stg_os',  col:1, label:'favd_video_metrics\n_outstream_stg', sub:'Kafka staging topic',  type:'enrichment', path:'both', tip:'Intermediate staging topic for outstream video. GenericAggJob aggregates vdev_video_event.datum into this before the Cassandra join.' },
+  { id:'e_stg_ctw', col:1, label:'favd_video_metrics\n_ctw_stg',       sub:'Kafka staging topic',  type:'enrichment', path:'both', tip:'Intermediate staging topic for CTW video. GenericAggJob aggregates vdev_video_event.datum into this before the Cassandra join.' },
 
-                const nav = cleanNum(find('NAV'));
-                const fairValue = cleanNum(find('תיאורטי'));
-                const quantity = cleanNum(find('כמות'));
-                const buyPrice = cleanNum(find('קנייה'));
+  // col 2 — faue_*
+  { id:'f_listings', col:2, label:'faue_listings',                 sub:'Kafka · GenericJoinerJob', type:'faue', path:'both', tip:'Enriched listing events. Source: dwds_dsrequest.datum × Cassandra.' },
+  { id:'f_clicks',   col:2, label:'faue_clicks',                   sub:'Kafka · GenericJoinerJob', type:'faue', path:'both', tip:'Enriched click events. Source: dwcl_click.datum × Cassandra.' },
+  { id:'f_pc',       col:2, label:'faue_paid_clicks',               sub:'Kafka · GenericJoinerJob', type:'faue', path:'both', tip:'Enriched paid click events. Source: pcpc_paid_clicks × Cassandra.' },
+  { id:'f_pi',       col:2, label:'faue_paid_impressions',          sub:'Kafka · GenericJoinerJob', type:'faue', path:'both', tip:'Enriched paid impression events. Source: pcpi_paid_impression.datum × Cassandra.' },
+  { id:'f_lv',       col:2, label:'faue_listings_viewability',      sub:'Kafka · GenericJoinerJob', type:'faue', path:'both', tip:'Enriched listing viewability events. Source: dwlv_listings_viewability.datum × Cassandra.' },
+  { id:'f_vo',       col:2, label:'faue_video_events_outstream',    sub:'Kafka · GenericJoinerJob', type:'faue', path:'both', tip:'Enriched outstream video events. Source: favd_video_metrics_outstream_stg × Cassandra.' },
+  { id:'f_vc',       col:2, label:'faue_video_events_ctw',          sub:'Kafka · GenericJoinerJob', type:'faue', path:'both', tip:'Enriched CTW video events. Source: favd_video_metrics_ctw_stg × Cassandra.' },
+  { id:'f_req',      col:2, label:'faue_requests',                  sub:'Kafka · GenericJoinerJob', type:'faue', path:'both', tip:'Enriched request events. Source: dwds_dsrequest.datum × Cassandra.' },
+  { id:'f_pvs',      col:2, label:'faue_pvs',                       sub:'Kafka · GenericAggJob',    type:'faue', path:'both', tip:'Page view events. Aggregated from faue_requests. 1-min window.' },
+  { id:'f_wi',       col:2, label:'faue_widget_impressions',         sub:'Kafka · GenericAggJob',    type:'faue', path:'both', tip:'Widget impression events. Aggregated from faue_requests.' },
+  { id:'f_psr',      col:2, label:'faue_potentially_served_request', sub:'Kafka · GenericAggJob',    type:'faue', path:'both', tip:'Potentially served requests. Source: dwps_psr.datum × Cassandra.' },
 
-                // חישוב שווי (חלקי 100 כי מחירי הקרנות באגורות)
-                const currentHoldValue = (fairValue * quantity) / 100;
-                const costHoldValue = (buyPrice * quantity) / 100;
-                
-                totalValueSum += currentHoldValue;
-                totalInvestmentSum += costHoldValue;
+  // col 3 — hive _rt
+  { id:'h_rt', col:3, label:'faue_*_rt\n(10 Hive tables)', sub:'KafkaToHiveJob\ncontinuous · last 1h events\nRT→Batch handoff 1', type:'hive_rt', path:'both', tip:'All 10 faue_* topics written continuously to Hive _rt partitions (ORC, date+hour). The hourly BatchAggJob reads these for the closed hour window — the primary RT→Batch handoff.' },
 
-                const profitAmount = currentHoldValue - costHoldValue;
-                const profitPercent = buyPrice > 0 ? ((fairValue - buyPrice) / buyPrice) * 100 : 0;
-                const dailyChange = nav > 0 ? ((fairValue - nav) / nav) * 100 : 0;
+  // col 4 — unified traffic
+  { id:'u_faam', col:4, label:'faam_amplify_all_traffic', sub:'Kafka · GenericAggJob\n5-min window',    type:'unified', path:'rt',    tip:'Unified Amplify traffic stream. Inputs: faue_paid_clicks, faue_clicks, faue_listings, faue_paid_impressions, faue_listings_viewability, faue_video_events_ctw, faue_video_events_outstream. Config: agg/faam_amplify_all_traffic.json' },
+  { id:'u_faem', col:4, label:'faem_engage_all_traffic',  sub:'Kafka · GenericAggJob\nstreaming agg',   type:'unified', path:'rt',    tip:'Unified Engage traffic stream. All faue_* events including requests, pvs, widget_impressions. Config: agg/faem_engage_all_traffic.json' },
 
-                const card = document.createElement('div');
-                card.className = 'card-grad p-8 rounded-3xl shadow-2xl hover:border-blue-500/30 transition-all duration-300';
-                card.innerHTML = `
-                    <div class="flex justify-between items-start mb-6 border-b border-slate-800/50 pb-5">
-                        <div>
-                            <h2 class="text-xl font-black text-white leading-tight">${name}</h2>
-                            <p class="text-cyan-400 text-xs font-bold mt-1 opacity-70 italic tracking-wide">${find('מדד') || ''}</p>
-                        </div>
-                        <div class="text-right">
-                            <span class="text-[10px] text-blue-400 font-bold uppercase tracking-widest">שווי בשקלים</span>
-                            <p class="text-3xl font-black text-white font-mono leading-none mt-1 tracking-tighter">₪ ${currentHoldValue.toLocaleString('he-IL', {maximumFractionDigits: 0})}</p>
-                        </div>
-                    </div>
-                    <div class="flex justify-between items-end">
-                        <div>
-                            <p class="text-[9px] text-slate-500 font-bold uppercase mb-1 tracking-widest">רווח/הפסד מאז הקנייה</p>
-                            <p class="text-2xl font-black ${profitAmount >= 0 ? 'profit' : 'loss'} font-mono leading-none tracking-tighter">
-                                ${profitAmount >= 0 ? '▲' : '▼'} ₪ ${Math.abs(profitAmount).toLocaleString('he-IL', {maximumFractionDigits: 0})}
-                            </p>
-                            <p class="text-[11px] font-bold ${profitAmount >= 0 ? 'profit' : 'loss'} opacity-80 mt-1">
-                                ${profitPercent.toFixed(2)}%
-                            </p>
-                        </div>
-                        <div class="text-right">
-                            <p class="text-[9px] text-slate-500 font-bold uppercase mb-1 tracking-widest italic">Live Price (Ag.)</p>
-                            <p class="text-2xl font-black ${dailyChange >= 0 ? 'text-emerald-400' : 'text-rose-400'} font-mono leading-none tracking-tighter">
-                                ${fairValue.toFixed(2)}
-                            </p>
-                            <p class="text-[10px] font-bold mt-1 opacity-60">היום: ${dailyChange >= 0 ? '+' : ''}${dailyChange.toFixed(2)}%</p>
-                        </div>
-                    </div>
-                `;
-                container.appendChild(card);
-            });
+  // col 5 — per-table agg
+  { id:'a_facm', col:5, label:'facm_campaign_traffic',        sub:'Kafka · 1-min', type:'agg', path:'rt',    tip:'Campaign-level traffic. Source: faam_amplify_all_traffic. → BQ realtime.facm_campaign_traffic via KafkaToGCS→GCS→GCSToBQ.' },
+  { id:'a_faad', col:5, label:'faad_ad_traffic',               sub:'Kafka · 1-min', type:'agg', path:'rt',    tip:'Ad-level traffic. Source: faam_amplify_all_traffic. → BQ realtime.faad_ad_traffic.' },
+  { id:'a_facs', col:5, label:'facs_campaign_section_traffic', sub:'Kafka · 1-min', type:'agg', path:'rt',    tip:'Campaign×section traffic. Source: faam_amplify_all_traffic. → BQ realtime.facs_campaign_section_traffic.' },
+  { id:'a_facg', col:5, label:'facg_campaign_geo_traffic',     sub:'Kafka · 1-min', type:'agg', path:'rt',    tip:'Campaign×geo traffic. Source: faam_amplify_all_traffic. → BQ realtime.facg_campaign_geo_traffic.' },
+  { id:'a_faex', col:5, label:'faex_external_id_traffic',      sub:'Kafka · 1-min', type:'agg', path:'rt',    tip:'External ID traffic. Reads directly from faue_* topics (bypasses faam/faem). → BQ realtime.faex_external_id_traffic.' },
+  { id:'a_faoc', col:5, label:'faoc_organic_campaign_traffic', sub:'Kafka · 1-min', type:'agg', path:'rt',    tip:'Organic campaign traffic. Source: faue_listings + faue_clicks. → BQ realtime.faoc_organic_campaign_traffic.' },
+  { id:'a_fast', col:5, label:'fast_section_traffic',          sub:'Kafka · streaming', type:'agg', path:'rt', tip:'Section-level traffic. Source: faem_engage_all_traffic.' },
+  { id:'a_fadt', col:5, label:'fadt_src_doc_traffic',          sub:'Kafka · streaming', type:'agg', path:'rt', tip:'Source document traffic. Source: faem_engage_all_traffic.' },
+  { id:'a_faar', col:5, label:'faar_amplify_realtime',         sub:'Kafka · 1-min window', type:'agg', path:'rt', tip:'1-min Amplify realtime agg. Source: faam_amplify_all_traffic. Output: Vertica outbrain_realtime (direct path, NOT MirrorApi). Dims: ts, ad_id, campaign, publisher, section_id, platform.' },
+  { id:'a_faap', col:5, label:'faap_amplify_pvs',              sub:'Kafka → Elasticsearch', type:'agg', path:'rt', tip:'Page-view agg. Source: faue_listings. Enriched with MySQL (country/lang) + Hive (campaign settings). Output: Elasticsearch index pv_re. Amplify traffic types 2,3,14,21 only.' },
 
-            // עדכון המדדים הראשיים למעלה
-            document.getElementById('total-value').innerText = `₪ ${totalValueSum.toLocaleString('he-IL', {maximumFractionDigits: 0})}`;
-            
-            const finalPnL = totalValueSum - totalInvestmentSum;
-            const pnlEl = document.getElementById('total-pnl');
-            pnlEl.innerText = `₪ ${finalPnL.toLocaleString('he-IL', {maximumFractionDigits: 0})}`;
-            pnlEl.className = `text-3xl font-black font-mono tracking-tighter ${finalPnL >= 0 ? 'profit' : 'loss'}`;
-            
-            const pnlPerEl = document.getElementById('total-pnl-percent');
-            const finalPer = totalInvestmentSum > 0 ? (finalPnL / totalInvestmentSum) * 100 : 0;
-            pnlPerEl.innerText = `${finalPer >= 0 ? '▲' : '▼'} ${Math.abs(finalPer).toFixed(2)}% תשואה מצטברת`;
-            pnlPerEl.className = `text-sm font-bold mt-1 ${finalPnL >= 0 ? 'profit' : 'loss'}`;
-        }
+  // col 6 — sinks
+  { id:'o_bqrt',  col:6, label:'BQ realtime.*',                   sub:'bq-analytics-storage\n7 tables · ~1-2 min latency', type:'bq',      path:'rt',    tip:'7 tables via KafkaToGCSJob(1-min) → GCS Parquet → GCSToBQJob: facm, facs, faad, facg, faex, faoc, famc.' },
+  { id:'o_bqprod',col:6, label:'BQ prod.*',                        sub:'hourly batch + RT merge\nAirflow MERGE every 5 min', type:'bq',      path:'both',  tip:'RT: Airflow realtime_load_to_bq_analytics MERGE (every 5 min, open hours). Batch: hive_to_bq_analytics DAG writes agg_level=hour rows, replacing RT rows. Conflict guard: PythonSensor.' },
+  { id:'o_dirp',  col:6, label:'dirp_real_time_max_partition',     sub:'BQ · dbt · every 5 min', type:'bq',      path:'rt',    tip:'dbt model. Computes max safe continuous 5-min RT partition across facm, facs, facg, faad, famc. Used by downstream consumers as the RT readiness pointer.' },
+  { id:'o_vrt',   col:6, label:'Vertica outbrain_realtime',        sub:'faar direct · 1-min',    type:'vertica', path:'rt',    tip:'faar_amplify_realtime data lands in Vertica outbrain_realtime schema. Direct path, explicitly excluded from standard MirrorApi mirroring.' },
+  { id:'o_vbatch',col:6, label:'Vertica (daily)',                   sub:'Hive → Vertica → BQ',    type:'vertica', path:'batch', tip:'Daily rollup path: Hive agg tables → Vertica → BQ. mtVerticaToVerticaCopy metoda handles DC-to-DC Vertica copies.' },
+  { id:'o_es',    col:6, label:'Elasticsearch pv_re',              sub:'DataxFaapToEs',           type:'es',      path:'rt',    tip:'Per-pageview agg index. Written by DataxFaapToEs from faap_amplify_pvs topic.' },
+];
 
-        fetchData();
-        setInterval(fetchData, 60000); // רענון אוטומטי כל דקה
-    </script>
-</body>
-</html>
+// path = 'rt' | 'batch' | 'both'
+const EDGES = [
+  // sources → cassandra
+  { f:'s_dwrl', t:'e_cass',    path:'both' },
+  { f:'s_dwds', t:'e_cass',    path:'both' },
+  // sources → video staging
+  { f:'s_vdev', t:'e_stg_os',  path:'both' },
+  { f:'s_vdev', t:'e_stg_ctw', path:'both' },
+  // source+cassandra → faue (cassandra is "enrichment" side, show source→faue + cassandra→faue)
+  { f:'s_dwds', t:'f_listings', path:'both' },
+  { f:'e_cass', t:'f_listings', path:'both' },
+  { f:'s_dwcl', t:'f_clicks',   path:'both' },
+  { f:'e_cass', t:'f_clicks',   path:'both' },
+  { f:'s_pcpc', t:'f_pc',       path:'both' },
+  { f:'e_cass', t:'f_pc',       path:'both' },
+  { f:'s_pcpi', t:'f_pi',       path:'both' },
+  { f:'e_cass', t:'f_pi',       path:'both' },
+  { f:'s_dwlv', t:'f_lv',       path:'both' },
+  { f:'e_cass', t:'f_lv',       path:'both' },
+  { f:'e_stg_os',  t:'f_vo',    path:'both' },
+  { f:'e_cass',    t:'f_vo',    path:'both' },
+  { f:'e_stg_ctw', t:'f_vc',    path:'both' },
+  { f:'e_cass',    t:'f_vc',    path:'both' },
+  { f:'s_dwds', t:'f_req',      path:'both' },
+  { f:'e_cass', t:'f_req',      path:'both' },
+  { f:'f_req',  t:'f_pvs',      path:'both' },
+  { f:'f_req',  t:'f_wi',       path:'both' },
+  { f:'s_dwps', t:'f_psr',      path:'both' },
+  { f:'e_cass', t:'f_psr',      path:'both' },
+  // faue → hive_rt
+  { f:'f_listings', t:'h_rt', path:'both' },
+  { f:'f_clicks',   t:'h_rt', path:'both' },
+  { f:'f_pc',       t:'h_rt', path:'both' },
+  { f:'f_pi',       t:'h_rt', path:'both' },
+  { f:'f_lv',       t:'h_rt', path:'both' },
+  { f:'f_vo',       t:'h_rt', path:'both' },
+  { f:'f_vc',       t:'h_rt', path:'both' },
+  { f:'f_req',      t:'h_rt', path:'both' },
+  { f:'f_pvs',      t:'h_rt', path:'both' },
+  { f:'f_wi',       t:'h_rt', path:'both' },
+  // faue → faam
+  { f:'f_pc',       t:'u_faam', path:'rt' },
+  { f:'f_clicks',   t:'u_faam', path:'rt' },
+  { f:'f_listings', t:'u_faam', path:'rt' },
+  { f:'f_pi',       t:'u_faam', path:'rt' },
+  { f:'f_lv',       t:'u_faam', path:'rt' },
+  { f:'f_vo',       t:'u_faam', path:'rt' },
+  { f:'f_vc',       t:'u_faam', path:'rt' },
+  // faue → faem
+  { f:'f_pc',       t:'u_faem', path:'rt' },
+  { f:'f_clicks',   t:'u_faem', path:'rt' },
+  { f:'f_listings', t:'u_faem', path:'rt' },
+  { f:'f_pi',       t:'u_faem', path:'rt' },
+  { f:'f_lv',       t:'u_faem', path:'rt' },
+  { f:'f_req',      t:'u_faem', path:'rt' },
+  { f:'f_pvs',      t:'u_faem', path:'rt' },
+  { f:'f_wi',       t:'u_faem', path:'rt' },
+  { f:'f_vo',       t:'u_faem', path:'rt' },
+  { f:'f_vc',       t:'u_faem', path:'rt' },
+  // hive_rt → batch outputs (representing batch pipeline)
+  { f:'h_rt', t:'o_bqprod',  path:'batch' },
+  { f:'h_rt', t:'o_vbatch',  path:'batch' },
+  // faam → per-table agg
+  { f:'u_faam', t:'a_facm', path:'rt' },
+  { f:'u_faam', t:'a_faad', path:'rt' },
+  { f:'u_faam', t:'a_facs', path:'rt' },
+  { f:'u_faam', t:'a_facg', path:'rt' },
+  { f:'u_faam', t:'a_faar', path:'rt' },
+  // faue → faex (direct, bypasses faam/faem)
+  { f:'f_clicks',   t:'a_faex', path:'rt' },
+  { f:'f_listings', t:'a_faex', path:'rt' },
+  { f:'f_pc',       t:'a_faex', path:'rt' },
+  { f:'f_pi',       t:'a_faex', path:'rt' },
+  { f:'f_req',      t:'a_faex', path:'rt' },
+  { f:'f_wi',       t:'a_faex', path:'rt' },
+  { f:'f_pvs',      t:'a_faex', path:'rt' },
+  { f:'f_vo',       t:'a_faex', path:'rt' },
+  { f:'f_vc',       t:'a_faex', path:'rt' },
+  // faue → faoc
+  { f:'f_listings', t:'a_faoc', path:'rt' },
+  { f:'f_clicks',   t:'a_faoc', path:'rt' },
+  // faem → section/doc
+  { f:'u_faem', t:'a_fast', path:'rt' },
+  { f:'u_faem', t:'a_fadt', path:'rt' },
+  // faue_listings → faap
+  { f:'f_listings', t:'a_faap', path:'rt' },
+  // agg → BQ realtime
+  { f:'a_facm', t:'o_bqrt', path:'rt' },
+  { f:'a_faad', t:'o_bqrt', path:'rt' },
+  { f:'a_facs', t:'o_bqrt', path:'rt' },
+  { f:'a_facg', t:'o_bqrt', path:'rt' },
+  { f:'a_faex', t:'o_bqrt', path:'rt' },
+  { f:'a_faoc', t:'o_bqrt', path:'rt' },
+  // BQ rt → prod + dirp
+  { f:'o_bqrt', t:'o_bqprod', path:'rt' },
+  { f:'o_bqrt', t:'o_dirp',   path:'rt' },
+  // faar → vertica rt
+  { f:'a_faar', t:'o_vrt', path:'rt' },
+  // faap → elasticsearch
+  { f:'a_faap', t:'o_es',  path:'rt' },
+];
+
+// ── LAYOUT ────────────────────────────────────────────────────────────────────
+
+const NW = 200, NH = 56, RG = 10, HEADER_H = 36;
+
+// group nodes by column and compute rows
+const colNodes = {};
+NODES.forEach(n => { (colNodes[n.col] = colNodes[n.col] || []).push(n); });
+const maxRows = Math.max(...Object.values(colNodes).map(a => a.length));
+const CANVAS_H = HEADER_H + maxRows * (NH + RG) + 40;
+const CANVAS_W = COLS_META[COLS_META.length-1].x + NW + 20;
+
+// node position lookup
+const nodePos = {};
+NODES.forEach(n => {
+  const col = colNodes[n.col];
+  const idx = col.indexOf(n);
+  const colH = col.length * NH + (col.length-1) * RG;
+  const topOffset = HEADER_H + Math.round((maxRows * (NH+RG) - RG - colH) / 2);
+  nodePos[n.id] = {
+    x: COLS_META[n.col].x,
+    y: topOffset + idx * (NH + RG),
+  };
+});
+
+// ── RENDER ────────────────────────────────────────────────────────────────────
+
+const outer   = document.getElementById('diagram-outer');
+const layer   = document.getElementById('node-layer');
+const svgEl   = document.getElementById('svg-layer');
+
+outer.style.height  = CANVAS_H + 'px';
+outer.style.minWidth = CANVAS_W + 'px';
+layer.style.height  = CANVAS_H + 'px';
+svgEl.setAttribute('viewBox', `0 0 ${CANVAS_W} ${CANVAS_H}`);
+svgEl.setAttribute('height', CANVAS_H);
+
+// Column headers (rendered as divs above node area)
+const hdrRow = document.createElement('div');
+hdrRow.style.cssText = `position:absolute;top:0;left:0;width:100%;height:${HEADER_H}px;`;
+COLS_META.forEach((cm, i) => {
+  const d = document.createElement('div');
+  d.style.cssText = `position:absolute;left:${cm.x}px;top:6px;width:${NW}px;text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:${cm.color};`;
+  d.textContent = cm.label;
+  hdrRow.appendChild(d);
+});
+layer.appendChild(hdrRow);
+
+// Nodes
+const nodeEls = {};
+NODES.forEach(n => {
+  const p = nodePos[n.id];
+  const d = document.createElement('div');
+  d.className = `node t-${n.type}`;
+  d.id = 'nd-' + n.id;
+  d.style.left = p.x + 'px';
+  d.style.top  = p.y + 'px';
+  d.dataset.path = n.path;
+
+  const label = document.createElement('div');
+  label.className = 'n-label';
+  label.textContent = n.label;
+  d.appendChild(label);
+
+  if (n.sub) {
+    const sub = document.createElement('div');
+    sub.className = 'n-sub';
+    sub.textContent = n.sub;
+    d.appendChild(sub);
+  }
+
+  d.addEventListener('mouseenter', e => { onHover(n.id); showTip(e, n); });
+  d.addEventListener('mousemove',  e => moveTip(e));
+  d.addEventListener('mouseleave', () => { clearHover(); hideTip(); });
+  layer.appendChild(d);
+  nodeEls[n.id] = d;
+});
+
+// SVG edges
+const defs = document.createElementNS('http://www.w3.org/2000/svg','defs');
+defs.innerHTML = `<marker id="arr" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#cbd5e1"/></marker><marker id="arr-rt" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#10b981"/></marker><marker id="arr-batch" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0,0 L0,6 L6,3 z" fill="#3b82f6"/></marker>`;
+svgEl.appendChild(defs);
+
+const edgeEls = [];
+EDGES.forEach((e, i) => {
+  const fp = nodePos[e.f], tp = nodePos[e.t];
+  if (!fp || !tp) return;
+  const x1 = fp.x + NW, y1 = fp.y + NH/2;
+  const x2 = tp.x,      y2 = tp.y + NH/2;
+  const dx = (x2 - x1) * 0.45;
+  const d  = `M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`;
+
+  const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+  path.setAttribute('d', d);
+  path.setAttribute('fill', 'none');
+  path.setAttribute('stroke', '#cbd5e1');
+  path.setAttribute('stroke-width', '1.2');
+  path.setAttribute('marker-end', 'url(#arr)');
+  path.setAttribute('opacity', '0.7');
+  path.dataset.from = e.f;
+  path.dataset.to   = e.t;
+  path.dataset.path = e.path;
+  svgEl.appendChild(path);
+  edgeEls.push(path);
+});
+
+// ── INTERACTIONS ──────────────────────────────────────────────────────────────
+
+let activeFilter = 'all';
+
+function setFilter(f, btn) {
+  activeFilter = f;
+  document.querySelectorAll('.btn:not(.export)').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilter();
+}
+
+function applyFilter() {
+  NODES.forEach(n => {
+    const el = nodeEls[n.id];
+    if (!el) return;
+    const visible = activeFilter === 'all' || n.path === activeFilter || n.path === 'both';
+    el.style.display = visible ? '' : 'none';
+  });
+  edgeEls.forEach(p => {
+    const ep = p.dataset.path;
+    const visible = activeFilter === 'all' || ep === activeFilter || ep === 'both';
+    p.style.display = visible ? '' : 'none';
+  });
+}
+
+// Build adjacency sets for hover
+const connected = {}; // nodeId → Set of connected nodeIds
+NODES.forEach(n => connected[n.id] = new Set());
+EDGES.forEach(e => {
+  if (connected[e.f]) connected[e.f].add(e.t);
+  if (connected[e.t]) connected[e.t].add(e.f);
+});
+
+function onHover(id) {
+  const relevant = new Set([id, ...connected[id]]);
+  NODES.forEach(n => {
+    const el = nodeEls[n.id];
+    if (!el || el.style.display === 'none') return;
+    if (relevant.has(n.id)) {
+      el.classList.remove('dimmed');
+      el.classList.add('highlighted');
+    } else {
+      el.classList.add('dimmed');
+      el.classList.remove('highlighted');
+    }
+  });
+  edgeEls.forEach(p => {
+    if (p.style.display === 'none') return;
+    const isRelevant = p.dataset.from === id || p.dataset.to === id ||
+      (relevant.has(p.dataset.from) && relevant.has(p.dataset.to));
+    if (isRelevant) {
+      const ep = p.dataset.path;
+      p.setAttribute('stroke', ep === 'rt' ? '#10b981' : ep === 'batch' ? '#3b82f6' : '#94a3b8');
+      p.setAttribute('stroke-width', '2');
+      p.setAttribute('opacity', '1');
+      p.setAttribute('marker-end', ep === 'rt' ? 'url(#arr-rt)' : ep === 'batch' ? 'url(#arr-batch)' : 'url(#arr)');
+    } else {
+      p.setAttribute('stroke', '#e2e8f0');
+      p.setAttribute('stroke-width', '1');
+      p.setAttribute('opacity', '0.4');
+    }
+  });
+}
+
+function clearHover() {
+  NODES.forEach(n => {
+    const el = nodeEls[n.id];
+    if (!el) return;
+    el.classList.remove('dimmed','highlighted');
+  });
+  edgeEls.forEach(p => {
+    p.setAttribute('stroke', '#cbd5e1');
+    p.setAttribute('stroke-width', '1.2');
+    p.setAttribute('opacity', '0.7');
+    p.setAttribute('marker-end', 'url(#arr)');
+  });
+}
+
+// tooltip
+const tipEl = document.getElementById('tip');
+function showTip(e, n) {
+  document.getElementById('tip-title').textContent = n.label;
+  document.getElementById('tip-body').textContent  = n.tip || '';
+  tipEl.classList.add('show');
+  moveTip(e);
+}
+function moveTip(e) {
+  tipEl.style.left = (e.clientX + 14) + 'px';
+  tipEl.style.top  = (e.clientY + 14) + 'px';
+}
+function hideTip() { tipEl.classList.remove('show'); }
+
+// ── EXCALIDRAW EXPORT ─────────────────────────────────────────────────────────
+
+function exportExcalidraw() {
+  const EX_SCALE = 1;
+  const TYPE_COLORS = {
+    source:     { stroke:'#ea580c', bg:'#fff7ed' },
+    enrichment: { stroke:'#d97706', bg:'#fffbeb' },
+    faue:       { stroke:'#7c3aed', bg:'#f5f3ff' },
+    hive_rt:    { stroke:'#4f46e5', bg:'#eef2ff' },
+    unified:    { stroke:'#0284c7', bg:'#f0f9ff' },
+    agg:        { stroke:'#0d9488', bg:'#f0fdfa' },
+    bq:         { stroke:'#16a34a', bg:'#f0fdf4' },
+    vertica:    { stroke:'#db2777', bg:'#fdf2f8' },
+    es:         { stroke:'#ea580c', bg:'#fff7ed' },
+  };
+  let seed = 1;
+  const elements = [];
+
+  // Column header text elements
+  COLS_META.forEach(cm => {
+    elements.push({
+      type:'text', id:`hdr_${cm.label.replace(/\W/g,'_')}`,
+      x: cm.x * EX_SCALE, y: 10,
+      text: cm.label.toUpperCase(),
+      fontSize: 12, strokeColor: cm.color,
+      width: NW * EX_SCALE, height: 20,
+      textAlign: 'center',
+    });
+  });
+
+  // Node rectangles
+  NODES.forEach(n => {
+    const p = nodePos[n.id];
+    const c = TYPE_COLORS[n.type] || TYPE_COLORS.source;
+    elements.push({
+      type: 'rectangle',
+      id: 'nd_' + n.id,
+      x: p.x * EX_SCALE,
+      y: p.y * EX_SCALE,
+      width: NW * EX_SCALE,
+      height: NH * EX_SCALE,
+      roundness: { type: 3 },
+      backgroundColor: c.bg,
+      fillStyle: 'solid',
+      strokeColor: c.stroke,
+      strokeWidth: 2,
+      roughness: 0,
+      label: { text: n.label, fontSize: 13, strokeColor: '#0f172a' },
+    });
+  });
+
+  // Arrows
+  EDGES.forEach((e, i) => {
+    const fp = nodePos[e.f], tp = nodePos[e.t];
+    if (!fp || !tp) return;
+    const x1 = (fp.x + NW) * EX_SCALE, y1 = (fp.y + NH/2) * EX_SCALE;
+    const x2 = tp.x * EX_SCALE,          y2 = (tp.y + NH/2) * EX_SCALE;
+    elements.push({
+      type: 'arrow',
+      id: 'eg_' + i,
+      x: x1, y: y1,
+      width: x2 - x1, height: y2 - y1,
+      points: [[0,0],[x2-x1, y2-y1]],
+      endArrowhead: 'arrow',
+      strokeColor: e.path === 'rt' ? '#10b981' : e.path === 'batch' ? '#3b82f6' : '#94a3b8',
+      strokeWidth: 1,
+      roughness: 0,
+      opacity: 60,
+      startBinding: { elementId: 'nd_'+e.f, fixedPoint:[1,0.5] },
+      endBinding:   { elementId: 'nd_'+e.t, fixedPoint:[0,0.5] },
+    });
+  });
+
+  const doc = {
+    type: 'excalidraw', version: 2,
+    source: 'https://excalidraw.com',
+    elements,
+    appState: { gridSize: null, viewBackgroundColor: '#f8fafc' },
+    files: {},
+  };
+
+  const blob = new Blob([JSON.stringify(doc, null,2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'datax-pipeline-lineage.excalidraw';
+  a.click();
+}
+</script>
+
+
+</body></html>
