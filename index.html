@@ -154,7 +154,7 @@ const NODES = [
   { id:'s_pcpi', col:0, label:'pcpi_paid_impression.datum',      sub:'Kafka topic',      type:'source',     path:'both',  tip:'Paid impression events. Source for faue_paid_impressions join.' },
   { id:'s_dwlv', col:0, label:'dwlv_listings_viewability.datum', sub:'Kafka topic',      type:'source',     path:'both',  tip:'Listing viewability events. Source for faue_listings_viewability join.' },
   { id:'s_vdev', col:0, label:'vdev_video_event.datum',          sub:'Kafka topic',      type:'source',     path:'both',  tip:'Video events. First aggregated into two staging topics before the Cassandra join.' },
-  { id:'s_dwps', col:0, label:'dwps_psr.datum',                  sub:'Kafka topic',      type:'source',     path:'both',  tip:'Potentially served request events. Source for faue_potentially_served_request.' },
+  { id:'s_dwps', col:0, label:'dwps_potentially_served_request\n.datum', sub:'Kafka topic',      type:'source',     path:'both',  tip:'Potentially served request events. Source topic: dwps_potentially_served_request.datum. Feeds faue_potentially_served_request via a plain select/passthrough (no Cassandra join).' },
 
   // col 1 — enrichment
   { id:'e_cass',    col:1, label:'Cassandra',                          sub:'unified_traffic_nydc\nrequest_and_listings\njoin: req_id + absolute_pos', type:'enrichment', path:'both', tip:'Enrichment store. Written by DataXDwrlToCassandraJob and DataXDwdsToCassandraJob. 2-hour window. Join key: req_id + absolute_pos.' },
@@ -170,9 +170,9 @@ const NODES = [
   { id:'f_vo',       col:2, label:'faue_video_events_outstream',    sub:'Kafka · GenericJoinerJob', type:'faue', path:'both', tip:'Enriched outstream video events. Source: favd_video_metrics_outstream_stg × Cassandra.' },
   { id:'f_vc',       col:2, label:'faue_video_events_ctw',          sub:'Kafka · GenericJoinerJob', type:'faue', path:'both', tip:'Enriched CTW video events. Source: favd_video_metrics_ctw_stg × Cassandra.' },
   { id:'f_req',      col:2, label:'faue_requests',                  sub:'Kafka · GenericJoinerJob', type:'faue', path:'both', tip:'Enriched request events. Source: dwds_dsrequest.datum × Cassandra.' },
-  { id:'f_pvs',      col:2, label:'faue_pvs',                       sub:'Kafka · GenericAggJob',    type:'faue', path:'both', tip:'Page view events. Aggregated from faue_requests. 3-min window (windowDuration: "3 minutes", waterMark: "3 minutes" — pvs.json:22-23).' },
+  { id:'f_pvs',      col:2, label:'faue_pvs',                       sub:'Kafka · GenericAggJob',    type:'faue', path:'both', tip:'Page view events. Aggregated from faue_requests. 3-min window (waterMark: "3 minutes" L21, windowDuration: "3 minutes" L22 — pvs.json).' },
   { id:'f_wi',       col:2, label:'faue_widget_impressions',         sub:'Kafka · GenericAggJob',    type:'faue', path:'both', tip:'Widget impression events. Aggregated from faue_requests.' },
-  { id:'f_psr',      col:2, label:'faue_potentially_served_request', sub:'Kafka · GenericAggJob',    type:'faue', path:'both', tip:'Potentially served requests. Source: dwps_psr.datum × Cassandra.' },
+  { id:'f_psr',      col:2, label:'faue_potentially_served_request', sub:'Kafka · select passthrough',    type:'faue', path:'both', tip:'Plain select/passthrough (jobType: "select", no Cassandra join, no aggregation window). Source: dwps_potentially_served_request.datum directly. Config: agg/potentially_served_request.json.' },
 
   // col 3 — hive tables (RT sink + Batch join output — two separate paths)
   { id:'h_rt',    col:3, label:'faue_*_rt\n(10 Hive tables)', sub:'KafkaToHiveJob · RT streaming sink\n(NOT consumed by batch pipeline)', type:'hive_rt', path:'rt',   tip:'All 10 faue_* Kafka topics continuously written to Hive _rt partitions (ORC, date+hour) by KafkaToHiveJob. Appends "_rt" suffix (KafkaToHiveJob.scala:32). This is a pure RT sink for ad-hoc query access — the batch pipeline does NOT read these tables.' },
@@ -235,7 +235,6 @@ const EDGES = [
   { f:'f_req',  t:'f_pvs',      path:'both' },
   { f:'f_req',  t:'f_wi',       path:'both' },
   { f:'s_dwps', t:'f_psr',      path:'both' },
-  { f:'e_cass', t:'f_psr',      path:'both' },
   // faue → hive_rt (RT streaming sink only — KafkaToHiveJob writes _rt suffix)
   { f:'f_listings', t:'h_rt', path:'rt' },
   { f:'f_clicks',   t:'h_rt', path:'rt' },
