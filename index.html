@@ -440,7 +440,7 @@ let activeFilter = 'all';
 
 function setFilter(f, btn) {
   activeFilter = f;
-  document.querySelectorAll('.btn:not(.export)').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.btn').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   applyFilter();
 }
@@ -459,16 +459,31 @@ function applyFilter() {
   });
 }
 
-// Build adjacency sets for hover
-const connected = {}; // nodeId → Set of connected nodeIds
-NODES.forEach(n => connected[n.id] = new Set());
+// Build directed adjacency for full lineage BFS
+const fwdAdj = {}; // nodeId → downstream Set
+const bwdAdj = {}; // nodeId → upstream Set
+NODES.forEach(n => { fwdAdj[n.id] = new Set(); bwdAdj[n.id] = new Set(); });
 EDGES.forEach(e => {
-  if (connected[e.f]) connected[e.f].add(e.t);
-  if (connected[e.t]) connected[e.t].add(e.f);
+  if (fwdAdj[e.f]) fwdAdj[e.f].add(e.t);
+  if (bwdAdj[e.t]) bwdAdj[e.t].add(e.f);
 });
 
+function bfsReach(startId, adjMap) {
+  const visited = new Set([startId]);
+  const queue = [startId];
+  while (queue.length) {
+    const cur = queue.shift();
+    for (const nb of (adjMap[cur] || [])) {
+      if (!visited.has(nb)) { visited.add(nb); queue.push(nb); }
+    }
+  }
+  return visited;
+}
+
 function onHover(id) {
-  const relevant = new Set([id, ...connected[id]]);
+  const downstream = bfsReach(id, fwdAdj);
+  const upstream   = bfsReach(id, bwdAdj);
+  const relevant   = new Set([...downstream, ...upstream]);
   NODES.forEach(n => {
     const el = nodeEls[n.id];
     if (!el || el.style.display === 'none') return;
