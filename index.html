@@ -74,6 +74,7 @@ header p  { font-size: 12px; color: #64748b; margin-top: 3px; }
 .t-source     { border-left-color: #ea580c; }
 .t-enrichment { border-left-color: #d97706; }
 .t-faue       { border-left-color: #7c3aed; }
+.t-faue_d     { border-left-color: #6d28d9; background: #f0ebff; }
 .t-hive_rt    { border-left-color: #4f46e5; background: #f5f3ff; }
 .t-batch      { border-left-color: #3b82f6; background: #eff6ff; }
 .t-unified    { border-left-color: #0284c7; }
@@ -111,7 +112,8 @@ header p  { font-size: 12px; color: #64748b; margin-top: 3px; }
 <div class="legend">
   <div class="legend-item"><div class="legend-swatch" style="background:#ea580c"></div>Raw Kafka source</div>
   <div class="legend-item"><div class="legend-swatch" style="background:#d97706"></div>Enrichment / Staging</div>
-  <div class="legend-item"><div class="legend-swatch" style="background:#7c3aed"></div>faue_* unified events</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#7c3aed"></div>faue_* joined events</div>
+  <div class="legend-item"><div class="legend-swatch" style="background:#6d28d9"></div>faue_* derived (pvs, wi)</div>
   <div class="legend-item"><div class="legend-swatch" style="background:#4f46e5"></div>Hive _rt (RT streaming sink)</div>
   <div class="legend-item"><div class="legend-swatch" style="background:#3b82f6"></div>Hive batch (GenericBatchJoinerJob)</div>
   <div class="legend-item"><div class="legend-swatch" style="background:#0284c7"></div>Unified traffic</div>
@@ -135,12 +137,13 @@ header p  { font-size: 12px; color: #64748b; margin-top: 3px; }
 
 const COLS_META = [
   { label: 'Raw Kafka Sources',        color: '#ea580c', x: 20   },
-  { label: 'Enrichment / Staging',     color: '#d97706', x: 300  },
-  { label: 'Unified Events (faue_*)',  color: '#7c3aed', x: 580  },
-  { label: 'Hive Tables',               color: '#4f46e5', x: 860  },
-  { label: 'Unified Traffic',          color: '#0284c7', x: 1140 },
-  { label: 'Aggregated Topics',        color: '#0d9488', x: 1420 },
-  { label: 'Final Sinks',              color: '#16a34a', x: 1700 },
+  { label: 'Enrichment / Staging',     color: '#d97706', x: 250  },
+  { label: 'Joined Events (faue_*)',   color: '#7c3aed', x: 480  },
+  { label: 'Derived faue_*',           color: '#6d28d9', x: 710  },
+  { label: 'Hive Tables',              color: '#4f46e5', x: 940  },
+  { label: 'Unified Traffic',          color: '#0284c7', x: 1170 },
+  { label: 'Aggregated Topics',        color: '#0d9488', x: 1400 },
+  { label: 'Final Sinks',              color: '#16a34a', x: 1630 },
 ];
 
 // col = column index, type = css class suffix, path = 'rt'|'batch'|'both'
@@ -170,41 +173,41 @@ const NODES = [
   { id:'f_vo',       col:2, label:'faue_video_events_outstream',    sub:'Kafka · GenericJoinerJob', type:'faue', path:'both', tip:'Enriched outstream video events. Source: favd_video_metrics_outstream_stg × Cassandra.' },
   { id:'f_vc',       col:2, label:'faue_video_events_ctw',          sub:'Kafka · GenericJoinerJob', type:'faue', path:'both', tip:'Enriched CTW video events. Source: favd_video_metrics_ctw_stg × Cassandra.' },
   { id:'f_req',      col:2, label:'faue_requests',                  sub:'Kafka · GenericJoinerJob', type:'faue', path:'both', tip:'Enriched request events. Source: dwds_dsrequest.datum × Cassandra.' },
-  { id:'f_pvs',      col:2, label:'faue_pvs',                       sub:'Kafka · GenericAggJob',    type:'faue', path:'both', tip:'Page view events. Aggregated from faue_requests. 3-min window (waterMark: "3 minutes" L21, windowDuration: "3 minutes" L22 — pvs.json).' },
-  { id:'f_wi',       col:2, label:'faue_widget_impressions',         sub:'Kafka · GenericAggJob',    type:'faue', path:'both', tip:'Widget impression events. Aggregated from faue_requests.' },
+  { id:'f_pvs',      col:3, label:'faue_pvs',                       sub:'Kafka · GenericAggJob',    type:'faue_d', path:'both', tip:'Page view events. Aggregated from faue_requests. 3-min window (waterMark: "3 minutes" L21, windowDuration: "3 minutes" L22 — pvs.json).' },
+  { id:'f_wi',       col:3, label:'faue_widget_impressions',         sub:'Kafka · GenericAggJob',    type:'faue_d', path:'both', tip:'Widget impression events. Aggregated from faue_requests.' },
   { id:'f_psr',      col:2, label:'faue_potentially_served_request', sub:'Kafka · select passthrough',    type:'faue', path:'both', tip:'Plain select/passthrough (jobType: "select", no Cassandra join, no aggregation window). Source: dwps_potentially_served_request.datum directly. Config: agg/potentially_served_request.json.' },
 
   // col 3 — hive tables (RT sink + Batch join output — two separate paths)
-  { id:'h_rt',    col:3, label:'faue_*_rt\n(10 Hive tables)', sub:'KafkaToHiveJob · RT streaming sink\n(NOT consumed by batch pipeline)', type:'hive_rt', path:'rt',   tip:'All 10 faue_* Kafka topics continuously written to Hive _rt partitions (ORC, date+hour) by KafkaToHiveJob. Appends "_rt" suffix (KafkaToHiveJob.scala:32). This is a pure RT sink for ad-hoc query access — the batch pipeline does NOT read these tables.' },
-  { id:'h_batch', col:3, label:'faue_* Hive\n(10 tables, no _rt)', sub:'GenericBatchJoinerJob · batch join\nfeeds BatchAggJob', type:'batch', path:'batch', tip:'Batch join output. GenericBatchJoinerJob reads raw Hive event tables + dwrl_request_listings → writes plain faue_* Hive tables (no _rt suffix). GenericBatchJoinerJob.scala:46: HiveWriter(TableAttributes(defs.outputTopic, "faue")). These are the input for BatchAggJob → faam/faem hourly Hive partitions.' },
+  { id:'h_rt',    col:4, label:'faue_*_rt\n(10 Hive tables)', sub:'KafkaToHiveJob · RT streaming sink\n(NOT consumed by batch pipeline)', type:'hive_rt', path:'rt',   tip:'All 10 faue_* Kafka topics continuously written to Hive _rt partitions (ORC, date+hour) by KafkaToHiveJob. Appends "_rt" suffix (KafkaToHiveJob.scala:32). This is a pure RT sink for ad-hoc query access — the batch pipeline does NOT read these tables.' },
+  { id:'h_batch', col:4, label:'faue_* Hive\n(10 tables, no _rt)', sub:'GenericBatchJoinerJob · batch join\nfeeds BatchAggJob', type:'batch', path:'batch', tip:'Batch join output. GenericBatchJoinerJob reads raw Hive event tables + dwrl_request_listings → writes plain faue_* Hive tables (no _rt suffix). GenericBatchJoinerJob.scala:46: HiveWriter(TableAttributes(defs.outputTopic, "faue")). These are the input for BatchAggJob → faam/faem hourly Hive partitions.' },
 
   // col 4 — unified traffic
-  { id:'u_faam', col:4, label:'faam_amplify_all_traffic', sub:'Kafka (RT) · Hive partitions (batch)\n5-min window / hourly',    type:'unified', path:'both',  tip:'Unified Amplify traffic. RT: GenericAggJob streaming Kafka topic (5-min window). Batch: BatchAggJob writes hourly Hive partitions of the same logical table. Config: agg/faam_amplify_all_traffic.json' },
-  { id:'u_faem', col:4, label:'faem_engage_all_traffic',  sub:'Kafka (RT) · Hive partitions (batch)\nstreaming / hourly',       type:'unified', path:'both',  tip:'Unified Engage traffic. RT: GenericAggJob streaming Kafka topic. Batch: BatchAggJob writes hourly Hive partitions. All faue_* events including requests, pvs, widget_impressions. Config: agg/faem_engage_all_traffic.json' },
+  { id:'u_faam', col:5, label:'faam_amplify_all_traffic', sub:'Kafka (RT) · Hive partitions (batch)\n5-min window / hourly',    type:'unified', path:'both',  tip:'Unified Amplify traffic. RT: GenericAggJob streaming Kafka topic (5-min window). Batch: BatchAggJob writes hourly Hive partitions of the same logical table. Config: agg/faam_amplify_all_traffic.json' },
+  { id:'u_faem', col:5, label:'faem_engage_all_traffic',  sub:'Kafka (RT) · Hive partitions (batch)\nstreaming / hourly',       type:'unified', path:'both',  tip:'Unified Engage traffic. RT: GenericAggJob streaming Kafka topic. Batch: BatchAggJob writes hourly Hive partitions. All faue_* events including requests, pvs, widget_impressions. Config: agg/faem_engage_all_traffic.json' },
 
   // col 5 — per-table agg
-  { id:'a_facm', col:5, label:'facm_campaign_traffic',        sub:'Kafka · 1-min', type:'agg', path:'rt',    tip:'Campaign-level traffic. Source: faam_amplify_all_traffic. → BQ realtime.facm_campaign_traffic via KafkaToGCS→GCS→GCSToBQ.' },
-  { id:'a_faad', col:5, label:'faad_ad_traffic',               sub:'Kafka · 1-min', type:'agg', path:'rt',    tip:'Ad-level traffic. Source: faam_amplify_all_traffic. → BQ realtime.faad_ad_traffic.' },
-  { id:'a_facs', col:5, label:'facs_campaign_section_traffic', sub:'Kafka · 1-min', type:'agg', path:'rt',    tip:'Campaign×section traffic. Source: faam_amplify_all_traffic. → BQ realtime.facs_campaign_section_traffic.' },
-  { id:'a_facg', col:5, label:'facg_campaign_geo_traffic',     sub:'Kafka · 1-min', type:'agg', path:'rt',    tip:'Campaign×geo traffic. Source: faam_amplify_all_traffic. → BQ realtime.facg_campaign_geo_traffic.' },
-  { id:'a_faex', col:5, label:'faex_external_id_traffic',      sub:'Kafka · 1-min', type:'agg', path:'rt',    tip:'External ID traffic. Reads directly from faue_* topics (bypasses faam/faem). → BQ realtime.faex_external_id_traffic.' },
-  { id:'a_faoc', col:5, label:'faoc_organic_campaign_traffic', sub:'Kafka · 1-min', type:'agg', path:'rt',    tip:'Organic campaign traffic. Source: faue_listings + faue_clicks. → BQ realtime.faoc_organic_campaign_traffic.' },
-  { id:'a_fast', col:5, label:'fast_section_traffic',          sub:'Kafka · streaming', type:'agg', path:'rt', tip:'Section-level traffic. Source: faem_engage_all_traffic.' },
-  { id:'a_fadt', col:5, label:'fadt_src_doc_traffic',          sub:'Kafka · streaming', type:'agg', path:'rt', tip:'Source document traffic. Source: faem_engage_all_traffic.' },
-  { id:'a_faar', col:5, label:'faar_amplify_realtime',         sub:'Kafka · 1-min window', type:'agg', path:'rt', tip:'1-min Amplify realtime agg. Source: faam_amplify_all_traffic. Output: Vertica outbrain_realtime (direct path, NOT MirrorApi). Dims: ts, ad_id, campaign, publisher, section_id, platform. ⚠ Vertica write path is PLAUSIBLE — not directly confirmed in available DataX job code; may be via a separate connector.' },
-  { id:'a_fafp', col:5, label:'fafp_fms_performance_traffic', sub:'Kafka · streaming',     type:'agg', path:'rt', tip:'FMS performance traffic agg. Source: faem_engage_all_traffic (fafp_fms_performance_traffic.json). Feeds downstream consumers.' },
-  { id:'a_faoe', col:5, label:'faoe_os_browser_engage',       sub:'Kafka · streaming',     type:'agg', path:'rt', tip:'OS/browser engage traffic agg. Source: faem_engage_all_traffic (faoe_os_browser_engage_traffic.json). Breaks down engagement by OS and browser.' },
-  { id:'a_faot', col:5, label:'faot_optimised_traffic',       sub:'Kafka · streaming',     type:'agg', path:'rt', tip:'Optimised traffic agg. Source: faem_engage_all_traffic (faot_optimised_traffic.json). Feeds optimised traffic consumers.' },
-  { id:'a_famc', col:5, label:'famc_multiple_conversion\n_click_listing_traffic', sub:'Kafka · join job · RT only', type:'agg', path:'rt', tip:'Conversion × click × listing join. Source: amplify_conversions_realtime (completely separate Kafka topic). Config: join/conversions_to_famc.json. → BQ realtime.famc_multiple_conversion_click_listing_traffic.' },
-  { id:'a_faap', col:5, label:'faap_amplify_pvs',              sub:'Kafka → Elasticsearch', type:'agg', path:'rt', tip:'Page-view agg. Source: faue_listings. Enriched with MySQL (country/lang) + Hive (campaign settings). Output: Elasticsearch index pv_re. Amplify traffic types 2,3,14,21 only.' },
+  { id:'a_facm', col:6, label:'facm_campaign_traffic',        sub:'Kafka · 1-min', type:'agg', path:'rt',    tip:'Campaign-level traffic. Source: faam_amplify_all_traffic. → BQ realtime.facm_campaign_traffic via KafkaToGCS→GCS→GCSToBQ.' },
+  { id:'a_faad', col:6, label:'faad_ad_traffic',               sub:'Kafka · 1-min', type:'agg', path:'rt',    tip:'Ad-level traffic. Source: faam_amplify_all_traffic. → BQ realtime.faad_ad_traffic.' },
+  { id:'a_facs', col:6, label:'facs_campaign_section_traffic', sub:'Kafka · 1-min', type:'agg', path:'rt',    tip:'Campaign×section traffic. Source: faam_amplify_all_traffic. → BQ realtime.facs_campaign_section_traffic.' },
+  { id:'a_facg', col:6, label:'facg_campaign_geo_traffic',     sub:'Kafka · 1-min', type:'agg', path:'rt',    tip:'Campaign×geo traffic. Source: faam_amplify_all_traffic. → BQ realtime.facg_campaign_geo_traffic.' },
+  { id:'a_faex', col:6, label:'faex_external_id_traffic',      sub:'Kafka · 1-min', type:'agg', path:'rt',    tip:'External ID traffic. Reads directly from faue_* topics (bypasses faam/faem). → BQ realtime.faex_external_id_traffic.' },
+  { id:'a_faoc', col:6, label:'faoc_organic_campaign_traffic', sub:'Kafka · 1-min', type:'agg', path:'rt',    tip:'Organic campaign traffic. Source: faue_listings + faue_clicks. → BQ realtime.faoc_organic_campaign_traffic.' },
+  { id:'a_fast', col:6, label:'fast_section_traffic',          sub:'Kafka · streaming', type:'agg', path:'rt', tip:'Section-level traffic. Source: faem_engage_all_traffic.' },
+  { id:'a_fadt', col:6, label:'fadt_src_doc_traffic',          sub:'Kafka · streaming', type:'agg', path:'rt', tip:'Source document traffic. Source: faem_engage_all_traffic.' },
+  { id:'a_faar', col:6, label:'faar_amplify_realtime',         sub:'Kafka · 1-min window', type:'agg', path:'rt', tip:'1-min Amplify realtime agg. Source: faam_amplify_all_traffic. Output: Vertica outbrain_realtime (direct path, NOT MirrorApi). Dims: ts, ad_id, campaign, publisher, section_id, platform. ⚠ Vertica write path is PLAUSIBLE — not directly confirmed in available DataX job code; may be via a separate connector.' },
+  { id:'a_fafp', col:6, label:'fafp_fms_performance_traffic', sub:'Kafka · streaming',     type:'agg', path:'rt', tip:'FMS performance traffic agg. Source: faem_engage_all_traffic (fafp_fms_performance_traffic.json). Feeds downstream consumers.' },
+  { id:'a_faoe', col:6, label:'faoe_os_browser_engage',       sub:'Kafka · streaming',     type:'agg', path:'rt', tip:'OS/browser engage traffic agg. Source: faem_engage_all_traffic (faoe_os_browser_engage_traffic.json). Breaks down engagement by OS and browser.' },
+  { id:'a_faot', col:6, label:'faot_optimised_traffic',       sub:'Kafka · streaming',     type:'agg', path:'rt', tip:'Optimised traffic agg. Source: faem_engage_all_traffic (faot_optimised_traffic.json). Feeds optimised traffic consumers.' },
+  { id:'a_famc', col:6, label:'famc_multiple_conversion\n_click_listing_traffic', sub:'Kafka · join job · RT only', type:'agg', path:'rt', tip:'Conversion × click × listing join. Source: amplify_conversions_realtime (completely separate Kafka topic). Config: join/conversions_to_famc.json. → BQ realtime.famc_multiple_conversion_click_listing_traffic.' },
+  { id:'a_faap', col:6, label:'faap_amplify_pvs',              sub:'Kafka → Elasticsearch', type:'agg', path:'rt', tip:'Page-view agg. Source: faue_listings. Enriched with MySQL (country/lang) + Hive (campaign settings). Output: Elasticsearch index pv_re. Amplify traffic types 2,3,14,21 only.' },
 
   // col 6 — sinks
-  { id:'o_bqrt',  col:6, label:'BQ realtime.*',                   sub:'bq-analytics-storage\n7 tables · ~1-2 min latency', type:'bq',      path:'rt',    tip:'7 tables via KafkaToGCSJob(1-min) → GCS Parquet → GCSToBQJob: facm, facs, faad, facg, faex, faoc, famc.' },
+  { id:'o_bqrt',  col:7, label:'BQ realtime.*',                   sub:'bq-analytics-storage\n7 tables · ~1-2 min latency', type:'bq',      path:'rt',    tip:'7 tables via KafkaToGCSJob(1-min) → GCS Parquet → GCSToBQJob: facm, facs, faad, facg, faex, faoc, famc.' },
   { id:'o_bqprod',col:6, label:'BQ prod.*',                        sub:'hourly batch + RT merge\nAirflow MERGE every 5 min', type:'bq',      path:'both',  tip:'RT: Airflow realtime_load_to_bq_analytics MERGE (every 5 min, open hours). Batch: hive_to_bq_analytics DAG writes rows with rounding_window=3600 (hourly), replacing RT rows (rounding_window=300). Conflict guard: PythonSensor.' },
-  { id:'o_dirp',  col:6, label:'dirp_real_time_max_partition',     sub:'BQ · dbt · every 5 min', type:'bq',      path:'rt',    tip:'dbt model. Computes max safe continuous 5-min RT partition across facm, facs, facg, faad, famc. Used by downstream consumers as the RT readiness pointer.' },
-  { id:'o_vrt',   col:6, label:'Vertica outbrain_realtime',        sub:'faar direct · 1-min',    type:'vertica', path:'rt',    tip:'faar_amplify_realtime data lands in Vertica outbrain_realtime schema. Direct path, explicitly excluded from standard MirrorApi mirroring.' },
+  { id:'o_dirp',  col:7, label:'dirp_real_time_max_partition',     sub:'BQ · dbt · every 5 min', type:'bq',      path:'rt',    tip:'dbt model. Computes max safe continuous 5-min RT partition across facm, facs, facg, faad, famc. Used by downstream consumers as the RT readiness pointer.' },
+  { id:'o_vrt',   col:7, label:'Vertica outbrain_realtime',        sub:'faar direct · 1-min',    type:'vertica', path:'rt',    tip:'faar_amplify_realtime data lands in Vertica outbrain_realtime schema. Direct path, explicitly excluded from standard MirrorApi mirroring.' },
   { id:'o_vbatch',col:6, label:'Vertica (daily)',                   sub:'Hive → Vertica → BQ',    type:'vertica', path:'batch', tip:'Daily rollup path: Hive agg tables → Vertica → BQ. mtVerticaToVerticaCopy metoda handles DC-to-DC Vertica copies.' },
-  { id:'o_es',    col:6, label:'Elasticsearch pv_re',              sub:'DataxFaapToEs',           type:'es',      path:'rt',    tip:'Per-pageview agg index. Written by DataxFaapToEs from faap_amplify_pvs topic.' },
+  { id:'o_es',    col:7, label:'Elasticsearch pv_re',              sub:'DataxFaapToEs',           type:'es',      path:'rt',    tip:'Per-pageview agg index. Written by DataxFaapToEs from faap_amplify_pvs topic.' },
 ];
 
 // path = 'rt' | 'batch' | 'both'
@@ -351,6 +354,12 @@ NODES.forEach(n => {
     y: topOffset + idx * (NH + RG),
   };
 });
+
+// Pin derived faue_* nodes vertically to their parent (faue_requests)
+if (nodePos['f_req'] && nodePos['f_pvs'] && nodePos['f_wi']) {
+  nodePos['f_pvs'].y = nodePos['f_req'].y;
+  nodePos['f_wi'].y  = nodePos['f_req'].y + NH + RG;
+}
 
 // ── RENDER ────────────────────────────────────────────────────────────────────
 
