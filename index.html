@@ -310,6 +310,9 @@ function selectFocus(id) {
 
 function showCore() {
   mode = 'core'; focusId = null;
+  searchQ = '';
+  const qEl = document.getElementById('q');
+  if (qEl) qEl.value = '';
   document.getElementById('btn-core').classList.add('active');
   document.getElementById('detail').classList.remove('show');
   const ids = new Set();
@@ -346,7 +349,8 @@ function setPathFilter(f) {
   ['all','rt','batch'].forEach(p => {
     document.getElementById('btn-path-'+p).classList.toggle('active', p === f);
   });
-  if (mode === 'focus' && focusId) selectFocus(focusId);
+  // Keep current focus when toggling RT/Batch; only fall back to core spine otherwise
+  if (mode === 'focus' && focusId && byId[focusId]) selectFocus(focusId);
   else showCore();
 }
 
@@ -565,6 +569,7 @@ function bfsReach(start, adj) {
   while (q.length) {
     const cur = q.shift();
     for (const e of (adj[cur]||[])) {
+      if (pathFilter !== 'all' && e.path !== 'both' && e.path !== pathFilter) continue;
       const nxt = adj===fwd ? e.t : e.f;
       if (visibleNodeIds.has(nxt) && !seen.has(nxt)) { seen.add(nxt); q.push(nxt); }
     }
