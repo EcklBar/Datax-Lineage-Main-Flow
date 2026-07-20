@@ -312,6 +312,23 @@ function selectFocus(id) {
   renderList();
 }
 
+function showEmpty() {
+  mode = 'welcome'; focusId = null;
+  searchQ = '';
+  const qEl = document.getElementById('q');
+  if (qEl) qEl.value = '';
+  document.getElementById('btn-core').classList.remove('active');
+  document.getElementById('detail').classList.remove('show');
+  document.getElementById('node-layer').innerHTML = '';
+  document.getElementById('svg-layer').innerHTML = '';
+  const outer = document.getElementById('diagram-outer');
+  if (outer) { outer.style.width = ''; outer.style.height = ''; }
+  const empty = document.getElementById('empty');
+  empty.style.display = '';
+  empty.innerHTML = 'Search for a table above, or click one in the sidebar to explore its lineage.<br><br><small style="opacity:.6">Or click <strong>Core spine</strong> to see the full pipeline.</small>';
+  renderList();
+}
+
 function showCore() {
   mode = 'core'; focusId = null;
   searchQ = '';
@@ -353,9 +370,9 @@ function setPathFilter(f) {
   ['all','rt','batch'].forEach(p => {
     document.getElementById('btn-path-'+p).classList.toggle('active', p === f);
   });
-  // Keep current focus when toggling RT/Batch; only fall back to core spine otherwise
   if (mode === 'focus' && focusId && byId[focusId]) selectFocus(focusId);
-  else showCore();
+  else if (mode === 'core') showCore();
+  else showEmpty();
 }
 
 function matchesList(n) {
@@ -654,8 +671,8 @@ renderList();
 try {
   const params = new URLSearchParams(location.search);
   if (params.get('t') && byId[params.get('t')]) selectFocus(params.get('t'));
-  else showCore();
-} catch (_) { showCore(); }
+  else showEmpty();
+} catch (_) { showEmpty(); }
 </script>
 </body>
 </html>
